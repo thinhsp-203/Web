@@ -1,2 +1,3 @@
 BT3 
-login, logout, resgiter
+login, logout, register
+
