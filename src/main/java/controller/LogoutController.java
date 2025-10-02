@@ -3,27 +3,25 @@ package controller;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
+import service.RememberMeService;
+import model.User;
 import java.io.IOException;
 
-@WebServlet(urlPatterns = "/logout")
+@WebServlet("/logout")
 public class LogoutController extends HttpServlet {
-	private static final long serialVersionUID = 1L;
+    private RememberMeService rememberMeService;
+
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-            throws ServletException, IOException {
-        HttpSession session = req.getSession(false);
-        if (session != null) {
-            session.invalidate();
-        }
-        Cookie[] cookies = req.getCookies();
-        if (cookies != null) {
-            for (Cookie c : cookies) {
-                if ("username".equals(c.getName())) {
-                    c.setMaxAge(0);
-                    resp.addCookie(c);
-                }
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        HttpSession s = req.getSession(false);
+        if (s != null) {
+            Object u = s.getAttribute("user");
+            s.invalidate();
+            if (u instanceof User && rememberMeService != null) {
+                try { rememberMeService.clearAll(((User) u).getId()); } catch (Exception ignore) {}
             }
         }
-        resp.sendRedirect(req.getContextPath() + "/login");
+        RememberMeService.deleteCookie(resp, req.getContextPath());
+        resp.sendRedirect(req.getContextPath() + "/login.jsp");
     }
 }
