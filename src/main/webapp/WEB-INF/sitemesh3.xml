@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemesh>
+    <decorator-mapper name="default">
+        <decorator name="main" page="/WEB-INF/decorators/main.jsp">
+            <pattern>/*</pattern>
+        </decorator>
+    </decorator-mapper>
+</sitemesh>

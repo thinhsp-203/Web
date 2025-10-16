@@ -1,63 +1,93 @@
 package dao.impl;
 
 import dao.RememberMeDao;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 import model.RememberMeToken;
-import util.DBConnection;
-
-import java.sql.*;
-import java.time.Instant;
+import util.JpaUtil;
 
 public class RememberMeDaoImpl implements RememberMeDao {
 
     @Override
     public void save(RememberMeToken t) throws Exception {
-        String sql = "INSERT INTO remember_me_tokens (user_id, selector, validator_hash, expires_at) VALUES (?,?,?,?)";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setLong(1, t.getUserId());
-            ps.setString(2, t.getSelector());
-            ps.setString(3, t.getValidatorHash());
-            ps.setTimestamp(4, Timestamp.from(t.getExpiresAt()));
-            ps.executeUpdate();
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            em.getTransaction().begin();
+            if (t.getUser() != null && t.getUser().getId() != null) {
+                t.setUser(em.getReference(model.User.class, t.getUser().getId()));
+            }
+            if (t.getId() == null) {
+                em.persist(t);
+            } else {
+                em.merge(t);
+            }
+            em.getTransaction().commit();
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            em.close();
         }
     }
 
     @Override
     public RememberMeToken findBySelector(String selector) throws Exception {
-        String sql = "SELECT user_id, selector, validator_hash, expires_at FROM remember_me_tokens WHERE selector = ?";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, selector);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                RememberMeToken t = new RememberMeToken();
-                t.setUserId(rs.getLong("user_id"));
-                t.setSelector(rs.getString("selector"));
-                t.setValidatorHash(rs.getString("validator_hash"));
-                Timestamp ts = rs.getTimestamp("expires_at");
-                t.setExpiresAt(ts != null ? ts.toInstant() : Instant.EPOCH);
-                return t;
-            }
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            TypedQuery<RememberMeToken> query = em.createQuery(
+                    "SELECT t FROM RememberMeToken t JOIN FETCH t.user WHERE t.selector = :selector",
+                    RememberMeToken.class);
+            query.setParameter("selector", selector);
+            return query.getResultStream().findFirst().orElse(null);
+        } finally {
+            em.close();
         }
     }
 
     @Override
     public void deleteBySelector(String selector) throws Exception {
-        String sql = "DELETE FROM remember_me_tokens WHERE selector = ?";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, selector);
-            ps.executeUpdate();
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            em.getTransaction().begin();
+            RememberMeToken token = em.createQuery(
+                            "SELECT t FROM RememberMeToken t WHERE t.selector = :selector",
+                            RememberMeToken.class)
+                    .setParameter("selector", selector)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+            if (token != null) {
+                em.remove(token);
+            }
+            em.getTransaction().commit();
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            em.close();
         }
     }
 
     @Override
-    public void deleteAllForUser(long userId) throws Exception {
-        String sql = "DELETE FROM remember_me_tokens WHERE user_id = ?";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setLong(1, userId);
-            ps.executeUpdate();
+    public void deleteAllForUser(Long userId) throws Exception {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            em.getTransaction().begin();
+            em.createQuery("DELETE FROM RememberMeToken t WHERE t.user.id = :userId")
+                    .setParameter("userId", userId)
+                    .executeUpdate();
+            em.getTransaction().commit();
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            em.close();
         }
     }
 }

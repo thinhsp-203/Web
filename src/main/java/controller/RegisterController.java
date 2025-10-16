@@ -11,13 +11,14 @@ import java.io.IOException;
 @WebServlet(urlPatterns = "/register")
 public class RegisterController extends HttpServlet {
     private static final long serialVersionUID = 1L;
+    private final UserService service = new UserServiceImpl();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         req.setCharacterEncoding("UTF-8");
         resp.setCharacterEncoding("UTF-8");
-        req.getRequestDispatcher("views/register.jsp").forward(req, resp);
+        req.getRequestDispatcher("/views/register.jsp").forward(req, resp);
     }
 
     @Override
@@ -36,16 +37,15 @@ public class RegisterController extends HttpServlet {
         // Validate đơn giản
         if (email.isEmpty() || username.isEmpty() || password.isEmpty()) {
             req.setAttribute("alert", "Email/Username/Password không được rỗng!");
-            req.getRequestDispatcher("views/register.jsp").forward(req, resp);
+            req.getRequestDispatcher("/views/register.jsp").forward(req, resp);
             return;
         }
 
-        UserService service = new UserServiceImpl();
         if (service.register(username, password, email, fullname, phone)) {
             resp.sendRedirect(req.getContextPath() + "/login");
         } else {
             req.setAttribute("alert", "Tài khoản / Email / Số điện thoại đã tồn tại!");
-            req.getRequestDispatcher("views/register.jsp").forward(req, resp);
+            req.getRequestDispatcher("/views/register.jsp").forward(req, resp);
         }
     }
 

@@ -56,7 +56,7 @@ public class CategoryEditController extends HttpServlet {
     }
 
     Category c = new Category();
-    c.setId(id);
+      c.setId((long) id);
     c.setName(name);
     c.setIcon(rel);
     service.edit(c);                  
