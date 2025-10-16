@@ -1,40 +1,52 @@
 package service;
 
 import dao.UserDao;
-import dao.UserDaoImpl;
+import dao.impl.UserDaoImpl;
 import model.User;
-import java.util.Date;
+import org.mindrot.jbcrypt.BCrypt;
+
+import java.time.Instant;
 
 public class UserServiceImpl implements UserService {
-    private UserDao userDao = new UserDaoImpl();
+    private final UserDao userDao = new UserDaoImpl();
 
     @Override
-    public User login(String username, String password) {
-        User user = userDao.get(username);
-        if (user != null) {
-            System.out.println("DB password=" + user.getPassWord() + ", input=" + password);
+    public User authenticate(String username, String password) {
+        if (username == null || password == null) {
+            return null;
         }
-        if (user != null && password.trim().equals(user.getPassWord().trim())) {
-            return user;
+        User user = userDao.findByUsername(username.trim());
+        if (user == null) {
+            return null;
         }
-        return null;
+        return BCrypt.checkpw(password, user.getPasswordHash()) ? user : null;
     }
-
 
     @Override
     public boolean register(String username, String password, String email, String fullname, String phone) {
-        if (userDao.checkExistUsername(username) || userDao.checkExistEmail(email) || userDao.checkExistPhone(phone)) {
+        if (userDao.existsByUsername(username)
+                || userDao.existsByEmail(email)
+                || (phone != null && !phone.isBlank() && userDao.existsByPhone(phone))) {
             return false;
         }
         User user = new User();
-        user.setEmail(email);
         user.setUserName(username);
+        user.setEmail(email);
         user.setFullName(fullname);
-        user.setPassWord(password);
-        user.setRoleid(3);
         user.setPhone(phone);
-        user.setCreatedDate(new Date());
-        userDao.insert(user);
+        user.setPasswordHash(BCrypt.hashpw(password, BCrypt.gensalt(10)));
+        user.setCreatedAt(Instant.now());
+        userDao.save(user);
         return true;
+    }
+
+    @Override
+    public User findByUsername(String username) {
+        return username == null ? null : userDao.findByUsername(username.trim());
+    }
+
+    @Override
+    public User findById(long id) {
+        return userDao.findById(id);
     }
 }

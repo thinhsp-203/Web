@@ -1,118 +1,99 @@
 package dao.impl;
 
 import dao.CategoryDao;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 import model.Category;
-import dao.DBConnection;
-import java.sql.*;
-import java.util.*;
+import util.JpaUtil;
 
-public class CategoryDaoImpl extends DBConnection implements CategoryDao {
-  @Override
-  public void insert(Category category) {
-    String sql = "INSERT INTO Category(cate_name, icons) VALUES (?, ?)";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setString(1, category.getName());
-      ps.setString(2, category.getIcon());
-      ps.executeUpdate();
-    } catch (Exception e) { e.printStackTrace(); }
-  }
+import java.util.List;
 
-  @Override
-  public void edit(Category category) {
-    String sql = "UPDATE Category SET cate_name=?, icons=? WHERE cate_id=?";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setString(1, category.getName());
-      ps.setString(2, category.getIcon());
-      ps.setInt(3, category.getId());
-      ps.executeUpdate();
-    } catch (Exception e) { e.printStackTrace(); }
-  }
+public class CategoryDaoImpl implements CategoryDao {
+    @Override
+    public void insert(Category category) {
+        executeInTransaction(em -> em.persist(category));
+    }
 
-  @Override
-  public void delete(int id) {
-    String sql = "DELETE FROM Category WHERE cate_id=?";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setInt(1, id);
-      ps.executeUpdate();
-    } catch (Exception e) { e.printStackTrace(); }
-  }
+    @Override
+    public void edit(Category category) {
+        executeInTransaction(em -> em.merge(category));
+    }
 
-  @Override
-  public Category get(int id) {
-    String sql = "SELECT * FROM Category WHERE cate_id=?";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setInt(1, id);
-      try (ResultSet rs = ps.executeQuery()) {
-        if (rs.next()) {
-          Category c = new Category();
-          c.setId(rs.getInt("cate_id"));
-          c.setName(rs.getString("cate_name"));
-          c.setIcon(rs.getString("icons"));
-          return c;
+    @Override
+    public void delete(Long id) {
+        executeInTransaction(em -> {
+            Category found = em.find(Category.class, id);
+            if (found != null) {
+                em.remove(found);
+            }
+        });
+    }
+
+    @Override
+    public Category get(Long id) {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            return em.find(Category.class, id);
+        } finally {
+            em.close();
         }
-      }
-    } catch (Exception e) { e.printStackTrace(); }
-    return null;
-  }
+    }
 
-  @Override
-  public Category get(String name) {
-    String sql = "SELECT * FROM Category WHERE cate_name=?";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setString(1, name);
-      try (ResultSet rs = ps.executeQuery()) {
-        if (rs.next()) {
-          Category c = new Category();
-          c.setId(rs.getInt("cate_id"));
-          c.setName(rs.getString("cate_name"));
-          c.setIcon(rs.getString("icons"));
-          return c;
+    @Override
+    public Category get(String name) {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            TypedQuery<Category> query = em.createQuery("SELECT c FROM Category c WHERE LOWER(c.name) = :name", Category.class);
+            query.setParameter("name", name.toLowerCase());
+            List<Category> result = query.getResultList();
+            return result.isEmpty() ? null : result.get(0);
+        } finally {
+            em.close();
         }
-      }
-    } catch (Exception e) { e.printStackTrace(); }
-    return null;
-  }
+    }
 
-  @Override
-  public List<Category> getAll() {
-    List<Category> list = new ArrayList<>();
-    String sql = "SELECT * FROM Category ORDER BY cate_id DESC";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql);
-         ResultSet rs = ps.executeQuery()) {
-      while (rs.next()) {
-        Category c = new Category();
-        c.setId(rs.getInt("cate_id"));
-        c.setName(rs.getString("cate_name"));
-        c.setIcon(rs.getString("icons"));
-        list.add(c);
-      }
-    } catch (Exception e) { e.printStackTrace(); }
-    return list;
-  }
-
-  @Override
-  public List<Category> search(String keyword) {
-    List<Category> list = new ArrayList<>();
-    String sql = "SELECT * FROM Category WHERE cate_name LIKE ?";
-    try (Connection con = super.getConnection();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setString(1, "%" + keyword + "%");
-      try (ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          Category c = new Category();
-          c.setId(rs.getInt("cate_id"));
-          c.setName(rs.getString("cate_name"));
-          c.setIcon(rs.getString("icons"));
-          list.add(c);
+    @Override
+    public List<Category> getAll() {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            return em.createQuery("SELECT c FROM Category c ORDER BY c.name", Category.class).getResultList();
+        } finally {
+            em.close();
         }
-      }
-    } catch (Exception e) { e.printStackTrace(); }
-    return list;
-  }
+    }
+
+    @Override
+    public List<Category> search(String keyword) {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            String pattern = "%" + keyword.toLowerCase() + "%";
+            TypedQuery<Category> query = em.createQuery(
+                    "SELECT c FROM Category c WHERE LOWER(c.name) LIKE :keyword ORDER BY c.name",
+                    Category.class);
+            query.setParameter("keyword", pattern);
+            return query.getResultList();
+        } finally {
+            em.close();
+        }
+    }
+
+    private interface EntityAction {
+        void accept(EntityManager em);
+    }
+
+    private void executeInTransaction(EntityAction action) {
+        EntityManager em = JpaUtil.getEntityManager();
+        try {
+            em.getTransaction().begin();
+            action.accept(em);
+            em.getTransaction().commit();
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw e;
+        } finally {
+            em.close();
+        }
+    }
 }

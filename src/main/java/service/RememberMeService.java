@@ -1,8 +1,10 @@
 package service;
 
 import dao.RememberMeDao;
+import dao.UserDao;
 import model.RememberMeToken;
 import org.mindrot.jbcrypt.BCrypt;
+import model.User;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,12 +18,18 @@ import java.util.UUID;
 
 public class RememberMeService {
     private final RememberMeDao dao;
+    private final UserDao userDao;
 
-    public RememberMeService(RememberMeDao dao) {
+    public RememberMeService(RememberMeDao dao, UserDao userDao) {
         this.dao = dao;
+        this.userDao = userDao;
     }
 
     public Cookie issueCookie(long userId, String contextPath) throws Exception {
+        User user = userDao.findById(userId);
+        if (user == null) {
+            throw new IllegalArgumentException("User not found for remember-me token");
+        }
         String selector = UUID.randomUUID().toString().replace("-", "");
         byte[] raw = new byte[32];
         new SecureRandom().nextBytes(raw);
@@ -29,7 +37,7 @@ public class RememberMeService {
 
         String validatorHash = BCrypt.hashpw(validator, BCrypt.gensalt(10));
         RememberMeToken t = new RememberMeToken();
-        t.setUserId(userId);
+        t.setUser(user);
         t.setSelector(selector);
         t.setValidatorHash(validatorHash);
         t.setExpiresAt(Instant.now().plus(Duration.ofDays(30)));
@@ -38,7 +46,7 @@ public class RememberMeService {
         String value = selector + ":" + validator;
         Cookie c = new Cookie("remember_me", value);
         c.setHttpOnly(true);
-        c.setSecure(true);             // cần HTTPS
+        c.setSecure(false);             // đặt true khi triển khai HTTPS
         c.setPath(contextPath);
         c.setMaxAge(60 * 60 * 24 * 30);
         return c;
@@ -61,9 +69,9 @@ public class RememberMeService {
             }
             // rotate
             dao.deleteBySelector(selector);
-            Cookie rotated = issueCookie(t.getUserId(), contextPath);
+            Cookie rotated = issueCookie(t.getUser().getId(), contextPath);
             resp.addCookie(rotated);
-            return t.getUserId();
+            return t.getUser().getId();
         }
         return null;
     }
